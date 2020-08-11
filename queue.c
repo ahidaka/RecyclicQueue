@@ -17,7 +17,7 @@ static INT _Debug = QDEBUG;
 #define msleep(a) usleep((a) * 1000)
 
 #define MAINBUFSIZ (1024)
-#define DATABUFSIZ (256)
+#define DATABUFSIZ (528)
 #define HEADER_SIZE (5)
 #define CRC8D_SIZE (1)
 
@@ -47,12 +47,21 @@ static INT _Debug = QDEBUG;
 STAILQ_HEAD(QueueHead, QEntry);
 typedef struct QueueHead QUEUE_HEAD;
 
+#if OLD_STRUCT
 struct QEntry {
 	INT Number;
 	INT Length;
 	BYTE Data[DATABUFSIZ];
 	STAILQ_ENTRY(QEntry) Entries;
 };
+#else
+struct QEntry {
+	BYTE Data[DATABUFSIZ];
+	INT Number;
+	INT Length;
+	STAILQ_ENTRY(QEntry) Entries;
+};
+#endif
 typedef struct QEntry QUEUE_ENTRY;
 
 QUEUE_HEAD DataQueue;     // Received Data
@@ -128,7 +137,8 @@ BYTE *Dequeue(QUEUE_HEAD *Queue)
 	_D printf("**Dequeue:\n");
 
 	if (STAILQ_EMPTY(Queue)) {
-		printf("**Dequeue Empty!\n");
+		printf("**Dequeue Empty=%s!\n", 
+			Queue == &DataQueue ? "Data" : "Free");
 		return NULL;
 	}
 	pthread_mutex_lock(&Queue->lock);
@@ -188,28 +198,28 @@ void *ReadThread(void *arg)
 	BYTE   *dataBuffer;
 	INT count = 0;
 
-	_D printf("**ReadThread: %d\n", RDCount);
-
-	////dataBuffer = malloc(DATABUFSIZ);
-	do {
-		dataBuffer = Dequeue(&FreeQueue);
-		if (dataBuffer == NULL) {
-			if (QueueTryTimes >= count) {
-				fprintf(stderr, "FreeQueue empty at ReadThread\n");
-				return (void*) NULL;
-			}
-			count++;
-			msleep(QueueTryWait);
-		}
-	}
-	while(dataBuffer == NULL);
-
-	DFCount++; // Deq FreeQueue
-
-	//printf("**ReadThread()\n");
 	while(!stop_read) {
+		_D printf("**ReadThread: %d\n", RDCount);
+
+		do {
+			dataBuffer = Dequeue(&FreeQueue);
+			if (dataBuffer == NULL) {
+				if (QueueTryTimes >= count) {
+					fprintf(stderr, "FreeQueue empty at ReadThread\n");
+					return (void*) NULL;
+				}
+				count++;
+				msleep(QueueTryWait);
+			}
+		}
+		while(dataBuffer == NULL);
+
+		DFCount++; // Deq FreeQueue
+
 		read_ready = TRUE;
 		//rType = GetPacket(fd, dataBuffer, (USHORT) DATABUFSIZ);
+		usleep(100);
+
 		if (stop_job) {
 			printf("**ReadThread breaked by stop_job-1\n");
 			break;
@@ -293,7 +303,7 @@ void PushPacket(BYTE *Buffer)
 
 void MainJob(BYTE *buffer)
 {
-	_D printf("***MainJob***:%p %d\n", buffer, MJCount++);
+	_D printf("*** MainJob:%u ***:%p %d\n", *((UINT *) &buffer[0]), buffer, MJCount++);
 }
 //
 //
